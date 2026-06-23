@@ -1,0 +1,13 @@
+{
+  "name": "tom-lizard-desktop-pet",
+  "version": "0.1.0",
+  "description": "A small macOS desktop pet prototype using Electron and a spritesheet.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "latest"
+  }
+}

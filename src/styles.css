@@ -1,0 +1,44 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  position: relative;
+}
+
+#pet {
+  width: 154px;
+  height: 166px;
+  background-image: url('../assets/spritesheet.webp');
+  background-repeat: no-repeat;
+  background-size: 1229px 1498px;
+  will-change: background-position;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+#speech-bubble {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 24px);
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(25, 35, 22, 0.82);
+  color: #fffbe8;
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#speech-bubble[hidden] {
+  display: none;
+}
