@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('petAPI', {
   showContextMenu() {
     ipcRenderer.send('pet:context-menu');
   },
+  disableClickThrough() {
+    ipcRenderer.send('pet:disable-click-through');
+  },
   notifyAnimationComplete(state) {
     ipcRenderer.send('pet:animation-complete', state);
   },

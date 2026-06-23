@@ -8,6 +8,7 @@ const { createPetTray, showPetContextMenu } = require('./main/trayMenu');
 let settingsStore;
 let settings;
 let win;
+let clickThroughControlWin;
 let movement;
 let tray;
 
@@ -45,6 +46,36 @@ function refreshMenus() {
   if (tray) tray.update();
 }
 
+function getClickThroughControlBounds() {
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = 168;
+  const height = 34;
+
+  return {
+    width,
+    height,
+    x: Math.round(workArea.x + workArea.width - width - 16),
+    y: Math.round(workArea.y + 16)
+  };
+}
+
+function updateClickThroughControlPosition() {
+  if (!clickThroughControlWin || clickThroughControlWin.isDestroyed()) return;
+  const { x, y, width, height } = getClickThroughControlBounds();
+  clickThroughControlWin.setBounds({ x, y, width, height }, false);
+}
+
+function syncClickThroughControl() {
+  if (!clickThroughControlWin || clickThroughControlWin.isDestroyed()) return;
+  updateClickThroughControlPosition();
+
+  if (settings.clickThrough) {
+    clickThroughControlWin.showInactive();
+  } else {
+    clickThroughControlWin.hide();
+  }
+}
+
 function applyClickThrough() {
   if (!win || win.isDestroyed()) return;
 
@@ -53,6 +84,8 @@ function applyClickThrough() {
   } else {
     win.setIgnoreMouseEvents(false);
   }
+
+  syncClickThroughControl();
 }
 
 function updateSettings(partial, options = {}) {
@@ -173,6 +206,41 @@ function createWindow() {
   });
 }
 
+function createClickThroughControlWindow() {
+  const { x, y, width, height } = getClickThroughControlBounds();
+
+  clickThroughControlWin = new BrowserWindow({
+    width,
+    height,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  clickThroughControlWin.setAlwaysOnTop(true, 'floating');
+  clickThroughControlWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  clickThroughControlWin.loadFile(path.join(__dirname, 'clickthrough.html'));
+  clickThroughControlWin.once('ready-to-show', syncClickThroughControl);
+}
+
 app.whenReady().then(() => {
   // Hide the Electron app icon from the macOS Dock.
   if (app.dock) app.dock.hide();
@@ -181,6 +249,8 @@ app.whenReady().then(() => {
   settings = settingsStore.get();
 
   createWindow();
+  createClickThroughControlWindow();
+  applyClickThrough();
 
   const actions = createActions();
   tray = createPetTray({
@@ -211,6 +281,11 @@ app.whenReady().then(() => {
       actions,
       getState: getMenuState
     });
+  });
+
+  ipcMain.on('pet:disable-click-through', () => {
+    if (!settings.clickThrough) return;
+    updateSettings({ clickThrough: false });
   });
 
   ipcMain.on('pet:animation-complete', (_event, state) => {
