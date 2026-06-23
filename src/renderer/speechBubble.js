@@ -13,14 +13,14 @@
       this.timer = null;
     }
 
-    showForState(state) {
+    showForState(state, reason) {
       const messages = MESSAGES[state];
-      if (!messages) {
+      if (!reason && !messages) {
         this.hide();
         return;
       }
 
-      const message = messages[Math.floor(Math.random() * messages.length)];
+      const message = reason ?? messages[Math.floor(Math.random() * messages.length)];
       this.element.textContent = message;
       this.element.hidden = false;
 

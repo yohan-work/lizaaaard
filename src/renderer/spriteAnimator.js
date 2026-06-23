@@ -39,11 +39,11 @@
       };
     }
 
-    setAnimation(animationName, stateName = animationName) {
+    setAnimation(animationName, stateName = animationName, options = {}) {
       const nextAnimation = this.petConfig.animations[animationName];
       if (!nextAnimation) return;
 
-      if (this.animationName === animationName && this.stateName === stateName) {
+      if (!options.force && this.animationName === animationName && this.stateName === stateName) {
         this.applyFrame();
         return;
       }

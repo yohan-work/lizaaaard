@@ -2,10 +2,26 @@ const TICK_MS = 1000 / 60;
 
 const LOOPING_STOP_STATES = new Set(['idle', 'waiting']);
 const ONE_SHOT_STATES = new Set(['waving', 'jumping', 'review']);
-const STOP_CHOICES = ['idle', 'waving', 'waiting', 'review'];
 
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function weightedChoice(choices) {
+  const total = choices.reduce((sum, choice) => sum + Math.max(0, choice.weight), 0);
+  if (total <= 0) return choices[0];
+
+  let cursor = Math.random() * total;
+  for (const choice of choices) {
+    cursor -= Math.max(0, choice.weight);
+    if (cursor <= 0) return choice;
+  }
+
+  return choices[choices.length - 1];
 }
 
 class MovementController {
@@ -25,6 +41,15 @@ class MovementController {
     this.nextStopAt = Date.now() + randomBetween(4500, 9000);
     this.stateUntil = 0;
     this.lastPersistAt = 0;
+    this.stateVersion = 0;
+    this.currentReason = null;
+    this.lastStopState = null;
+    this.behavior = {
+      energy: 0.85,
+      attention: 0.2,
+      lastInteractionAt: 0,
+      recentInteractions: []
+    };
   }
 
   getPetSize() {
@@ -91,7 +116,14 @@ class MovementController {
   getState() {
     return {
       state: this.state,
+      stateVersion: this.stateVersion,
       direction: this.direction,
+      mood: this.getMood(),
+      reason: this.currentReason,
+      behavior: {
+        energy: Number(this.behavior.energy.toFixed(2)),
+        attention: Number(this.behavior.attention.toFixed(2))
+      },
       position: {
         x: Math.round(this.x),
         y: this.clampY(this.getFloorY())
@@ -101,6 +133,31 @@ class MovementController {
 
   emitState() {
     this.onStateChange(this.getState());
+  }
+
+  getMood() {
+    if (this.behavior.energy < 0.25) return 'tired';
+    if (this.behavior.attention > 0.7) return 'playful';
+    if (Date.now() - this.behavior.lastInteractionAt > 45000) return 'curious';
+    return 'calm';
+  }
+
+  updateBehavior(deltaMs) {
+    const seconds = deltaMs / 1000;
+
+    if (this.state === 'walking-left' || this.state === 'walking-right') {
+      this.behavior.energy = clamp(this.behavior.energy - seconds * 0.018, 0, 1);
+      this.behavior.attention = clamp(this.behavior.attention - seconds * 0.012, 0, 1);
+      return;
+    }
+
+    if (this.state === 'idle' || this.state === 'waiting') {
+      this.behavior.energy = clamp(this.behavior.energy + seconds * 0.055, 0, 1);
+      this.behavior.attention = clamp(this.behavior.attention - seconds * 0.018, 0, 1);
+      return;
+    }
+
+    this.behavior.attention = clamp(this.behavior.attention - seconds * 0.01, 0, 1);
   }
 
   applyPosition(forcePersist = false) {
@@ -146,7 +203,40 @@ class MovementController {
 
   playInteraction(state) {
     if (!ONE_SHOT_STATES.has(state)) return;
-    this.enterState(state);
+
+    const now = Date.now();
+    const previousInteractionAt = this.behavior.lastInteractionAt;
+    this.behavior.recentInteractions = this.behavior.recentInteractions
+      .filter((timestamp) => now - timestamp < 3500);
+    this.behavior.recentInteractions.push(now);
+    this.behavior.lastInteractionAt = now;
+    this.behavior.attention = clamp(this.behavior.attention + 0.28, 0, 1);
+
+    const isTooBusy = this.behavior.recentInteractions.length >= 4;
+    if (isTooBusy) {
+      this.behavior.energy = clamp(this.behavior.energy - 0.08, 0, 1);
+      this.enterState('waiting', {
+        durationMs: randomBetween(1800, 3000),
+        reason: '잠깐만, 숨 좀 돌릴게...'
+      });
+      return;
+    }
+
+    if (state === 'jumping') {
+      this.behavior.energy = clamp(this.behavior.energy - 0.18, 0, 1);
+      if (this.behavior.energy < 0.18) {
+        this.enterState('waiting', {
+          durationMs: randomBetween(1800, 3200),
+          reason: '점프는 조금 쉬고 할래...'
+        });
+        return;
+      }
+    }
+
+    const reason = state === 'jumping'
+      ? '깜짝이야!'
+      : (previousInteractionAt && now - previousInteractionAt < 1200 ? '또 불렀어?' : '안녕!');
+    this.enterState(state, { reason });
   }
 
   animationComplete(state) {
@@ -156,17 +246,24 @@ class MovementController {
 
   enterState(state, options = {}) {
     this.state = state;
+    this.stateVersion += 1;
+    this.currentReason = options.reason ?? null;
 
     if (state === 'walking-left') {
       this.direction = -1;
       this.stateUntil = 0;
+      this.currentReason = null;
       this.scheduleNextStop();
     } else if (state === 'walking-right') {
       this.direction = 1;
       this.stateUntil = 0;
+      this.currentReason = null;
       this.scheduleNextStop();
     } else if (LOOPING_STOP_STATES.has(state)) {
       this.stateUntil = Date.now() + (options.durationMs ?? randomBetween(1600, 4200));
+      this.lastStopState = state;
+    } else if (ONE_SHOT_STATES.has(state)) {
+      this.lastStopState = state;
     } else {
       this.stateUntil = 0;
     }
@@ -185,8 +282,43 @@ class MovementController {
 
   maybeStop(now) {
     if (now < this.nextStopAt) return;
-    const nextState = STOP_CHOICES[Math.floor(Math.random() * STOP_CHOICES.length)];
-    this.enterState(nextState);
+    const choice = this.chooseStopState(now);
+    this.enterState(choice.state, { reason: choice.reason });
+  }
+
+  chooseStopState(now) {
+    const idleWeight = 2 + (this.behavior.attention < 0.25 ? 1.1 : 0);
+    const waitingWeight = 1.2 + (1 - this.behavior.energy) * 5;
+    const wavingWeight = 1 + this.behavior.attention * 4;
+    const reviewWeight = 1.2 + (now - this.behavior.lastInteractionAt > 30000 ? 2 : 0);
+    const choices = [
+      {
+        state: 'idle',
+        weight: idleWeight,
+        reason: this.behavior.attention < 0.2 ? '조용히 쉬는 중이야.' : null
+      },
+      {
+        state: 'waiting',
+        weight: waitingWeight,
+        reason: this.behavior.energy < 0.35 ? '조금만 쉴게...' : null
+      },
+      {
+        state: 'waving',
+        weight: wavingWeight,
+        reason: this.behavior.attention > 0.65 ? '나 여기 있어!' : null
+      },
+      {
+        state: 'review',
+        weight: reviewWeight,
+        reason: now - this.behavior.lastInteractionAt > 30000 ? '뭐 하고 있는지 볼까?' : null
+      }
+    ].map((choice) => (
+      choice.state === this.lastStopState
+        ? { ...choice, weight: choice.weight * 0.35 }
+        : choice
+    ));
+
+    return weightedChoice(choices);
   }
 
   tick() {
@@ -195,6 +327,7 @@ class MovementController {
     const now = Date.now();
     const delta = Math.min(now - this.lastTickAt, 120);
     this.lastTickAt = now;
+    this.updateBehavior(delta);
 
     const settings = this.getSettings();
     if (settings.paused) {
