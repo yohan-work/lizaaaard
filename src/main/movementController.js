@@ -58,6 +58,7 @@ class MovementController {
     this.currentReason = null;
     this.lastStopState = null;
     this.drag = null;
+    this.jumpArc = null;
     this.behavior = {
       energy: 0.85,
       attention: 0.2,
@@ -125,10 +126,33 @@ class MovementController {
   }
 
   getCurrentPosition() {
+    const yOffset = this.getJumpYOffset(Date.now());
     return {
       x: Math.round(this.clampX(this.x)),
-      y: Math.round(this.clampY(this.y))
+      y: Math.round(this.clampY(this.y + yOffset))
     };
+  }
+
+  getJumpYOffset(now) {
+    if (!this.jumpArc) return 0;
+
+    const elapsed = now - this.jumpArc.startedAt;
+    const progress = clamp(elapsed / this.jumpArc.durationMs, 0, 1);
+    return -Math.sin(progress * Math.PI) * this.jumpArc.height;
+  }
+
+  startJumpArc(options = {}) {
+    const scale = this.getSettings().scale;
+    this.jumpArc = {
+      startedAt: Date.now(),
+      durationMs: options.durationMs ?? 620,
+      height: options.height ?? Math.round(46 * scale)
+    };
+  }
+
+  clearJumpArc() {
+    this.jumpArc = null;
+    this.applyPosition();
   }
 
   isValidPoint(point) {
@@ -141,6 +165,7 @@ class MovementController {
   startDrag(point) {
     if (!this.isValidPoint(point)) return;
 
+    this.clearJumpArc();
     const position = this.getCurrentPosition();
     this.drag = {
       startMouseX: point.screenX,
@@ -148,7 +173,7 @@ class MovementController {
       startX: position.x,
       startY: position.y
     };
-    this.enterState('idle', { reason: '여기로 갈까?' });
+    this.enterState('idle', { reason: '날 어디로 보낼거냐?' });
   }
 
   dragTo(point) {
@@ -172,12 +197,12 @@ class MovementController {
     }
 
     if (Math.random() < 0.18) {
-      this.enterState('waving', { reason: '여기 좋다!' });
+      this.enterState('waving', { reason: '좋아, 여긴 내 무대다.' });
       return;
     }
 
     if (Math.random() < 0.08) {
-      this.enterState('oops', { reason: '어질어질...' });
+      this.enterState('oops', { reason: '잠깐, 지구가 흔들렸어.' });
       return;
     }
 
@@ -284,6 +309,7 @@ class MovementController {
 
   resetPosition() {
     this.direction = 1;
+    this.clearJumpArc();
     this.moveToDefaultPosition();
     this.resumeWalking('walking-right');
     this.applyPosition(true);
@@ -304,11 +330,11 @@ class MovementController {
     if (isTooBusy) {
       this.behavior.energy = clamp(this.behavior.energy - 0.08, 0, 1);
       if (Math.random() < 0.45) {
-        this.enterState('oops', { reason: '앗, 너무 빨라!' });
+        this.enterState('oops', { reason: '야야, 팬서비스 과부하!' });
       } else {
         this.enterState('waiting', {
           durationMs: randomBetween(1800, 3000),
-          reason: '잠깐만, 숨 좀 돌릴게...'
+          reason: '잠깐만, 스타도 충전한다.'
         });
       }
       return;
@@ -317,7 +343,7 @@ class MovementController {
     if (state === 'jumping') {
       this.behavior.energy = clamp(this.behavior.energy - 0.18, 0, 1);
       if (this.behavior.energy < 0.18) {
-        this.enterState('oops', { reason: '점프는 조금 힘들어...' });
+        this.enterState('oops', { reason: '방금 점프는 예고편이야.' });
         return;
       }
     }
@@ -325,19 +351,20 @@ class MovementController {
     if (state === 'waving' && this.behavior.attention > 0.68 && this.behavior.energy > 0.38 && Math.random() < 0.35) {
       this.enterState('excited', {
         durationMs: randomBetween(1200, 2200),
-        reason: '좋아!'
+        reason: '좋아, 톰 모드 ON!'
       });
       return;
     }
 
     const reason = state === 'jumping'
-      ? '깜짝이야!'
-      : (previousInteractionAt && now - previousInteractionAt < 1200 ? '또 불렀어?' : '안녕!');
+      ? '봤냐? 공중 장악.'
+      : (previousInteractionAt && now - previousInteractionAt < 1200 ? '또 불렀어? 인기란...' : '안녕, 내 팬!');
     this.enterState(state, { reason });
   }
 
   animationComplete(state) {
     if (state !== this.state || !ONE_SHOT_STATES.has(state)) return;
+    if (state === 'jumping' || state === 'stretch') this.clearJumpArc();
     this.resumeWalking();
   }
 
@@ -365,11 +392,25 @@ class MovementController {
       this.stateUntil = 0;
     }
 
+    if (state === 'jumping') {
+      this.startJumpArc({
+        durationMs: options.jumpDurationMs ?? 640,
+        height: options.jumpHeight
+      });
+    } else if (state === 'stretch') {
+      this.startJumpArc({
+        durationMs: options.jumpDurationMs ?? 520,
+        height: Math.round(22 * this.getSettings().scale)
+      });
+    } else if (state !== 'stretch') {
+      this.jumpArc = null;
+    }
+
     this.emitState();
   }
 
   scheduleNextStop() {
-    this.nextStopAt = Date.now() + randomBetween(4500, 9500);
+    this.nextStopAt = Date.now() + randomBetween(2600, 5600);
   }
 
   resumeWalking(preferredState) {
@@ -395,41 +436,47 @@ class MovementController {
       ? 0.45 + clamp((now - this.behavior.lastInteractionAt) / 90000, 0, 1)
       : 0.1;
     const oopsWeight = this.behavior.energy < 0.18 ? 1.2 : 0.15;
+    const jumpWeight = this.behavior.energy > 0.5 ? 2.25 : 0.35;
     const choices = [
       {
         state: 'idle',
         weight: idleWeight,
-        reason: this.behavior.attention < 0.2 ? '조용히 쉬는 중이야.' : null
+        reason: this.behavior.attention < 0.2 ? '조용해도 존재감은 세지.' : null
       },
       {
         state: 'waiting',
         weight: waitingWeight,
-        reason: this.behavior.energy < 0.35 ? '조금만 쉴게...' : null
+        reason: this.behavior.energy < 0.35 ? '충전 중. 곧 화려해진다.' : null
       },
       {
         state: 'waving',
         weight: wavingWeight,
-        reason: this.behavior.attention > 0.65 ? '나 여기 있어!' : null
+        reason: this.behavior.attention > 0.65 ? '나 여기 있다, 시선 고정!' : null
+      },
+      {
+        state: 'jumping',
+        weight: jumpWeight,
+        reason: this.behavior.energy > 0.72 ? '폴짝! 방금 봤지?' : null
       },
       {
         state: 'review',
         weight: reviewWeight,
-        reason: now - this.behavior.lastInteractionAt > 30000 ? '뭐 하고 있는지 볼까?' : null
+        reason: now - this.behavior.lastInteractionAt > 30000 ? '인간, 뭐 꾸미는 중?' : null
       },
       {
         state: 'excited',
         weight: excitedWeight,
-        reason: this.behavior.attention > 0.7 ? '신난다!' : null
+        reason: this.behavior.attention > 0.7 ? '신난다! 톰 지나간다!' : null
       },
       {
         state: 'stretch',
         weight: stretchWeight,
-        reason: '쭉...'
+        reason: '쭉... 우아함 장전.'
       },
       {
         state: 'oops',
         weight: oopsWeight,
-        reason: this.behavior.energy < 0.18 ? '앗, 힘이 빠졌어...' : null
+        reason: this.behavior.energy < 0.18 ? '힘 빠진 게 아니라 연기야.' : null
       }
     ].map((choice) => (
       choice.state === this.lastStopState
