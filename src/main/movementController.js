@@ -1,7 +1,8 @@
 const TICK_MS = 1000 / 60;
 
-const LOOPING_STOP_STATES = new Set(['idle', 'waiting']);
-const ONE_SHOT_STATES = new Set(['waving', 'jumping', 'review']);
+const LOOPING_STOP_STATES = new Set(['idle', 'waiting', 'excited']);
+const ONE_SHOT_STATES = new Set(['waving', 'jumping', 'review', 'oops', 'stretch']);
+const INTERACTION_STATES = new Set([...ONE_SHOT_STATES, 'excited']);
 
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
@@ -170,6 +171,16 @@ class MovementController {
       return;
     }
 
+    if (Math.random() < 0.18) {
+      this.enterState('waving', { reason: '여기 좋다!' });
+      return;
+    }
+
+    if (Math.random() < 0.08) {
+      this.enterState('oops', { reason: '어질어질...' });
+      return;
+    }
+
     this.resumeWalking();
   }
 
@@ -226,6 +237,12 @@ class MovementController {
       return;
     }
 
+    if (this.state === 'excited') {
+      this.behavior.energy = clamp(this.behavior.energy - seconds * 0.03, 0, 1);
+      this.behavior.attention = clamp(this.behavior.attention - seconds * 0.02, 0, 1);
+      return;
+    }
+
     if (this.state === 'idle' || this.state === 'waiting') {
       this.behavior.energy = clamp(this.behavior.energy + seconds * 0.055, 0, 1);
       this.behavior.attention = clamp(this.behavior.attention - seconds * 0.018, 0, 1);
@@ -273,7 +290,7 @@ class MovementController {
   }
 
   playInteraction(state) {
-    if (!ONE_SHOT_STATES.has(state)) return;
+    if (!INTERACTION_STATES.has(state)) return;
 
     const now = Date.now();
     const previousInteractionAt = this.behavior.lastInteractionAt;
@@ -286,22 +303,31 @@ class MovementController {
     const isTooBusy = this.behavior.recentInteractions.length >= 4;
     if (isTooBusy) {
       this.behavior.energy = clamp(this.behavior.energy - 0.08, 0, 1);
-      this.enterState('waiting', {
-        durationMs: randomBetween(1800, 3000),
-        reason: '잠깐만, 숨 좀 돌릴게...'
-      });
+      if (Math.random() < 0.45) {
+        this.enterState('oops', { reason: '앗, 너무 빨라!' });
+      } else {
+        this.enterState('waiting', {
+          durationMs: randomBetween(1800, 3000),
+          reason: '잠깐만, 숨 좀 돌릴게...'
+        });
+      }
       return;
     }
 
     if (state === 'jumping') {
       this.behavior.energy = clamp(this.behavior.energy - 0.18, 0, 1);
       if (this.behavior.energy < 0.18) {
-        this.enterState('waiting', {
-          durationMs: randomBetween(1800, 3200),
-          reason: '점프는 조금 쉬고 할래...'
-        });
+        this.enterState('oops', { reason: '점프는 조금 힘들어...' });
         return;
       }
+    }
+
+    if (state === 'waving' && this.behavior.attention > 0.68 && this.behavior.energy > 0.38 && Math.random() < 0.35) {
+      this.enterState('excited', {
+        durationMs: randomBetween(1200, 2200),
+        reason: '좋아!'
+      });
+      return;
     }
 
     const reason = state === 'jumping'
@@ -362,6 +388,13 @@ class MovementController {
     const waitingWeight = 1.2 + (1 - this.behavior.energy) * 5;
     const wavingWeight = 1 + this.behavior.attention * 4;
     const reviewWeight = 1.2 + (now - this.behavior.lastInteractionAt > 30000 ? 2 : 0);
+    const excitedWeight = this.behavior.attention > 0.55 && this.behavior.energy > 0.35
+      ? 0.8 + this.behavior.attention * 2.5
+      : 0.2;
+    const stretchWeight = this.behavior.energy > 0.45
+      ? 0.45 + clamp((now - this.behavior.lastInteractionAt) / 90000, 0, 1)
+      : 0.1;
+    const oopsWeight = this.behavior.energy < 0.18 ? 1.2 : 0.15;
     const choices = [
       {
         state: 'idle',
@@ -382,6 +415,21 @@ class MovementController {
         state: 'review',
         weight: reviewWeight,
         reason: now - this.behavior.lastInteractionAt > 30000 ? '뭐 하고 있는지 볼까?' : null
+      },
+      {
+        state: 'excited',
+        weight: excitedWeight,
+        reason: this.behavior.attention > 0.7 ? '신난다!' : null
+      },
+      {
+        state: 'stretch',
+        weight: stretchWeight,
+        reason: '쭉...'
+      },
+      {
+        state: 'oops',
+        weight: oopsWeight,
+        reason: this.behavior.energy < 0.18 ? '앗, 힘이 빠졌어...' : null
       }
     ].map((choice) => (
       choice.state === this.lastStopState

@@ -6,7 +6,10 @@
     waving: 'waving',
     jumping: 'jumping',
     waiting: 'waiting',
-    review: 'review'
+    review: 'review',
+    excited: 'running',
+    oops: 'failed',
+    stretch: 'jumping'
   };
 
   class PetStateMachine {
