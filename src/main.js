@@ -24,7 +24,8 @@ function getMenuState() {
     visible: Boolean(win && !win.isDestroyed() && win.isVisible()),
     paused: settings.paused,
     clickThrough: settings.clickThrough,
-    sizePreset: settings.sizePreset
+    sizePreset: settings.sizePreset,
+    displayPreference: settings.displayPreference
   };
 }
 
@@ -46,8 +47,23 @@ function refreshMenus() {
   if (tray) tray.update();
 }
 
+function getDisplayForPreference(preference) {
+  const displays = screen.getAllDisplays();
+  if (preference === 'rightmost') {
+    return displays.reduce((rightmost, display) => (
+      display.bounds.x > rightmost.bounds.x ? display : rightmost
+    ), displays[0]);
+  }
+
+  return screen.getPrimaryDisplay();
+}
+
+function getTargetWorkArea() {
+  return getDisplayForPreference(settings.displayPreference).workArea;
+}
+
 function getClickThroughControlBounds() {
-  const { workArea } = screen.getPrimaryDisplay();
+  const workArea = getTargetWorkArea();
   const width = 168;
   const height = 34;
 
@@ -130,6 +146,13 @@ function createActions() {
         { resize: true }
       );
     },
+    setDisplayPreference(displayPreference) {
+      updateSettings({ displayPreference, lastPosition: null });
+      movement.resetPosition();
+      syncClickThroughControl();
+      sendState();
+      refreshMenus();
+    },
     resetPosition() {
       settings = settingsStore.resetPosition();
       movement.resetPosition();
@@ -146,7 +169,7 @@ function createActions() {
 
 function createWindow() {
   const { width, height } = getPetSize();
-  const workArea = screen.getPrimaryDisplay().workArea;
+  const workArea = getTargetWorkArea();
 
   win = new BrowserWindow({
     width,

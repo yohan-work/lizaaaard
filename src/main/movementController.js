@@ -24,6 +24,17 @@ function weightedChoice(choices) {
   return choices[choices.length - 1];
 }
 
+function getDisplayForPreference(screen, preference) {
+  const displays = screen.getAllDisplays();
+  if (preference === 'rightmost') {
+    return displays.reduce((rightmost, display) => (
+      display.bounds.x > rightmost.bounds.x ? display : rightmost
+    ), displays[0]);
+  }
+
+  return screen.getPrimaryDisplay();
+}
+
 class MovementController {
   constructor({ win, screen, petConfig, getSettings, onStateChange, onPositionChange }) {
     this.win = win;
@@ -61,7 +72,8 @@ class MovementController {
   }
 
   getWorkArea() {
-    return this.screen.getPrimaryDisplay().workArea;
+    const settings = this.getSettings();
+    return getDisplayForPreference(this.screen, settings.displayPreference).workArea;
   }
 
   getFloorY() {
@@ -95,7 +107,11 @@ class MovementController {
   initialize() {
     const settings = this.getSettings();
     const workArea = this.getWorkArea();
-    this.x = settings.lastPosition ? settings.lastPosition.x : workArea.x + 40;
+    const { minX, maxX } = this.getLimits();
+    const savedX = settings.lastPosition?.x;
+    this.x = typeof savedX === 'number' && savedX >= minX && savedX <= maxX
+      ? savedX
+      : workArea.x + 40;
     this.x = this.clampX(this.x);
     this.applyPosition(true);
     this.emitState();

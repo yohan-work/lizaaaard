@@ -38,6 +38,23 @@ function sizeItems(actions, state) {
   ];
 }
 
+function displayItems(actions, state) {
+  return [
+    {
+      label: 'Display: Primary',
+      type: 'radio',
+      checked: state.displayPreference === 'primary',
+      click: () => actions.setDisplayPreference('primary')
+    },
+    {
+      label: 'Display: Right Monitor',
+      type: 'radio',
+      checked: state.displayPreference === 'rightmost',
+      click: () => actions.setDisplayPreference('rightmost')
+    }
+  ];
+}
+
 function buildPetContextMenu(actions, state) {
   return Menu.buildFromTemplate([
     {
@@ -46,6 +63,8 @@ function buildPetContextMenu(actions, state) {
     },
     { type: 'separator' },
     ...sizeItems(actions, state),
+    { type: 'separator' },
+    ...displayItems(actions, state),
     { type: 'separator' },
     {
       label: state.clickThrough ? 'Disable Click-through' : 'Enable Click-through',
@@ -77,6 +96,9 @@ function buildTrayMenu(actions, state) {
       label: state.clickThrough ? 'Disable Click-through' : 'Enable Click-through',
       click: actions.toggleClickThrough
     },
+    { type: 'separator' },
+    ...displayItems(actions, state),
+    { type: 'separator' },
     {
       label: 'Reset Position',
       click: actions.resetPosition

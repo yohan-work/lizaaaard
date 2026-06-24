@@ -8,13 +8,19 @@ const DEFAULT_SETTINGS = {
   clickThrough: false,
   paused: false,
   lastPosition: null,
-  sizePreset: 'medium'
+  sizePreset: 'medium',
+  displayPreference: 'rightmost'
 };
 
 const SIZE_PRESETS = {
   small: 0.65,
   medium: 0.8,
   large: 1
+};
+
+const DISPLAY_PREFERENCES = {
+  primary: 'Primary Display',
+  rightmost: 'Right Monitor'
 };
 
 function isFiniteNumber(value) {
@@ -38,6 +44,9 @@ function sanitizeSettings(value) {
   const scale = isFiniteNumber(input.scale) && input.scale > 0.3 && input.scale < 2
     ? input.scale
     : SIZE_PRESETS[sizePreset];
+  const displayPreference = Object.prototype.hasOwnProperty.call(DISPLAY_PREFERENCES, input.displayPreference)
+    ? input.displayPreference
+    : DEFAULT_SETTINGS.displayPreference;
 
   return {
     scale,
@@ -52,7 +61,8 @@ function sanitizeSettings(value) {
       : DEFAULT_SETTINGS.clickThrough,
     paused: typeof input.paused === 'boolean' ? input.paused : DEFAULT_SETTINGS.paused,
     lastPosition: sanitizePosition(input.lastPosition),
-    sizePreset
+    sizePreset,
+    displayPreference
   };
 }
 
@@ -98,6 +108,7 @@ function createSettingsStore(app) {
 
 module.exports = {
   DEFAULT_SETTINGS,
+  DISPLAY_PREFERENCES,
   SIZE_PRESETS,
   createSettingsStore
 };
