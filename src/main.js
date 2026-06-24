@@ -311,6 +311,22 @@ app.whenReady().then(() => {
     updateSettings({ clickThrough: false });
   });
 
+  ipcMain.on('pet:drag-start', (_event, point) => {
+    if (settings.clickThrough) return;
+    movement.startDrag(point);
+  });
+
+  ipcMain.on('pet:drag-move', (_event, point) => {
+    if (settings.clickThrough) return;
+    movement.dragTo(point);
+  });
+
+  ipcMain.on('pet:drag-end', () => {
+    if (settings.clickThrough) return;
+    movement.endDrag();
+    sendState();
+  });
+
   ipcMain.on('pet:animation-complete', (_event, state) => {
     movement.animationComplete(state);
   });

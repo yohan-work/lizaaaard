@@ -16,6 +16,15 @@ contextBridge.exposeInMainWorld('petAPI', {
   disableClickThrough() {
     ipcRenderer.send('pet:disable-click-through');
   },
+  beginDrag(point) {
+    ipcRenderer.send('pet:drag-start', point);
+  },
+  updateDrag(point) {
+    ipcRenderer.send('pet:drag-move', point);
+  },
+  endDrag() {
+    ipcRenderer.send('pet:drag-end');
+  },
   notifyAnimationComplete(state) {
     ipcRenderer.send('pet:animation-complete', state);
   },

@@ -47,6 +47,7 @@ class MovementController {
     this.direction = 1;
     this.state = 'walking-right';
     this.x = 0;
+    this.y = 0;
     this.timer = null;
     this.lastTickAt = Date.now();
     this.nextStopAt = Date.now() + randomBetween(4500, 9000);
@@ -55,6 +56,7 @@ class MovementController {
     this.stateVersion = 0;
     this.currentReason = null;
     this.lastStopState = null;
+    this.drag = null;
     this.behavior = {
       energy: 0.85,
       attention: 0.2,
@@ -107,14 +109,74 @@ class MovementController {
   initialize() {
     const settings = this.getSettings();
     const workArea = this.getWorkArea();
-    const { minX, maxX } = this.getLimits();
-    const savedX = settings.lastPosition?.x;
-    this.x = typeof savedX === 'number' && savedX >= minX && savedX <= maxX
-      ? savedX
+    const { minX, maxX, minY, maxY } = this.getLimits();
+    const savedPosition = settings.lastPosition;
+    this.x = typeof savedPosition?.x === 'number' && savedPosition.x >= minX && savedPosition.x <= maxX
+      ? savedPosition.x
       : workArea.x + 40;
+    this.y = typeof savedPosition?.y === 'number' && savedPosition.y >= minY && savedPosition.y <= maxY
+      ? savedPosition.y
+      : this.getFloorY();
     this.x = this.clampX(this.x);
+    this.y = this.clampY(this.y);
     this.applyPosition(true);
     this.emitState();
+  }
+
+  getCurrentPosition() {
+    return {
+      x: Math.round(this.clampX(this.x)),
+      y: Math.round(this.clampY(this.y))
+    };
+  }
+
+  isValidPoint(point) {
+    return point
+      && typeof point === 'object'
+      && Number.isFinite(point.screenX)
+      && Number.isFinite(point.screenY);
+  }
+
+  startDrag(point) {
+    if (!this.isValidPoint(point)) return;
+
+    const position = this.getCurrentPosition();
+    this.drag = {
+      startMouseX: point.screenX,
+      startMouseY: point.screenY,
+      startX: position.x,
+      startY: position.y
+    };
+    this.enterState('idle', { reason: '여기로 갈까?' });
+  }
+
+  dragTo(point) {
+    if (!this.drag || !this.isValidPoint(point)) return;
+
+    const dx = point.screenX - this.drag.startMouseX;
+    const dy = point.screenY - this.drag.startMouseY;
+    this.x = this.clampX(this.drag.startX + dx);
+    this.y = this.clampY(this.drag.startY + dy);
+    this.applyPosition();
+  }
+
+  endDrag() {
+    if (!this.drag) return;
+
+    this.drag = null;
+    this.applyPosition(true);
+    if (this.getSettings().paused) {
+      this.enterState('waiting', { durationMs: Number.POSITIVE_INFINITY });
+      return;
+    }
+
+    this.resumeWalking();
+  }
+
+  moveToDefaultPosition() {
+    const workArea = this.getWorkArea();
+    this.x = this.clampX(workArea.x + 40);
+    this.y = this.clampY(this.getFloorY());
   }
 
   start() {
@@ -140,10 +202,7 @@ class MovementController {
         energy: Number(this.behavior.energy.toFixed(2)),
         attention: Number(this.behavior.attention.toFixed(2))
       },
-      position: {
-        x: Math.round(this.x),
-        y: this.clampY(this.getFloorY())
-      }
+      position: this.getCurrentPosition()
     };
   }
 
@@ -178,11 +237,7 @@ class MovementController {
 
   applyPosition(forcePersist = false) {
     if (!this.win || this.win.isDestroyed()) return;
-    const y = this.clampY(this.getFloorY());
-    const position = {
-      x: Math.round(this.clampX(this.x)),
-      y
-    };
+    const position = this.getCurrentPosition();
     this.win.setPosition(position.x, position.y, false);
 
     const now = Date.now();
@@ -197,6 +252,7 @@ class MovementController {
     const { width, height } = this.getPetSize();
     this.win.setSize(width, height, false);
     this.x = this.clampX(this.x);
+    this.y = this.clampY(this.y);
     this.applyPosition(true);
   }
 
@@ -210,9 +266,8 @@ class MovementController {
   }
 
   resetPosition() {
-    const workArea = this.getWorkArea();
     this.direction = 1;
-    this.x = this.clampX(workArea.x + 40);
+    this.moveToDefaultPosition();
     this.resumeWalking('walking-right');
     this.applyPosition(true);
   }
@@ -346,6 +401,11 @@ class MovementController {
     this.updateBehavior(delta);
 
     const settings = this.getSettings();
+    if (this.drag) {
+      this.applyPosition();
+      return;
+    }
+
     if (settings.paused) {
       this.applyPosition();
       return;
