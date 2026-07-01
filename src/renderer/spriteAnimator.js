@@ -12,6 +12,7 @@
       this.lastFrameAt = 0;
       this.completed = false;
       this.running = false;
+      this.presentationClasses = [];
     }
 
     updateSettings(settings) {
@@ -55,6 +56,19 @@
       this.lastFrameAt = 0;
       this.completed = false;
       this.applyFrame();
+    }
+
+    setPresentation(state = {}) {
+      this.presentationClasses.forEach((className) => this.element.classList.remove(className));
+
+      const classes = [
+        state.mood ? `pet-mood-${state.mood}` : null,
+        state.motion ? `pet-motion-${state.motion}` : null,
+        state.activityMode ? `pet-activity-${state.activityMode}` : null
+      ].filter(Boolean);
+
+      classes.forEach((className) => this.element.classList.add(className));
+      this.presentationClasses = classes;
     }
 
     applyFrame() {

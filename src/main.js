@@ -25,7 +25,8 @@ function getMenuState() {
     paused: settings.paused,
     clickThrough: settings.clickThrough,
     sizePreset: settings.sizePreset,
-    displayPreference: settings.displayPreference
+    displayPreference: settings.displayPreference,
+    activityMode: settings.activityMode
   };
 }
 
@@ -152,6 +153,11 @@ function createActions() {
       syncClickThroughControl();
       sendState();
       refreshMenus();
+    },
+    setActivityMode(activityMode) {
+      updateSettings({ activityMode });
+      movement.refreshBehaviorSchedule();
+      sendState();
     },
     resetPosition() {
       settings = settingsStore.resetPosition();

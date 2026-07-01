@@ -10,25 +10,52 @@
     stretch: ['쭉... 관절도 스타야.', '몸 좀 풀고 간다.', '유연함까지 완벽.']
   };
 
+  const MOOD_MESSAGES = {
+    tired: ['배터리 말고 톰터리 충전 중.', '조금 느려도 품격은 그대로야.'],
+    playful: ['지금 톰 텐션 좋다.', '한 번 더 불러봐. 아마 반응한다.'],
+    lonely: ['나 여기 계속 있었다?', '인간, 화면 구석에 톰 있다.'],
+    curious: ['뭐 하는 중이야?', '조용한데 수상하군.'],
+    calm: ['잔잔하게 멋있는 중.', '평화롭다. 꼬리도 만족.']
+  };
+
   class SpeechBubble {
     constructor(element) {
       this.element = element;
       this.timer = null;
+      this.settings = {};
     }
 
-    showForState(state, reason) {
+    updateSettings(settings) {
+      this.settings = settings ?? {};
+    }
+
+    showForState(state, reason, context = {}) {
       const messages = MESSAGES[state];
-      if (!reason && !messages) {
+      const moodMessages = MOOD_MESSAGES[context.mood];
+      const quietChance = context.speechChance ?? (this.settings.activityMode === 'quiet' ? 0.38 : 1);
+
+      if (!reason && Math.random() > quietChance) {
         this.hide();
         return;
       }
 
-      const message = reason ?? messages[Math.floor(Math.random() * messages.length)];
+      if (!reason && !messages && !moodMessages) {
+        this.hide();
+        return;
+      }
+
+      const pool = messages && moodMessages && Math.random() < 0.36
+        ? moodMessages
+        : (messages ?? moodMessages);
+      const message = reason ?? pool[Math.floor(Math.random() * pool.length)];
       this.element.textContent = message;
       this.element.hidden = false;
 
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.hide(), state === 'waiting' ? 2200 : 1400);
+      const durationMs = this.settings.activityMode === 'quiet'
+        ? 1150
+        : (state === 'waiting' ? 2400 : 1600);
+      this.timer = setTimeout(() => this.hide(), durationMs);
     }
 
     hide() {

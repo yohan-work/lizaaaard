@@ -4,6 +4,30 @@ const LOOPING_STOP_STATES = new Set(['idle', 'waiting', 'excited']);
 const ONE_SHOT_STATES = new Set(['waving', 'jumping', 'review', 'oops', 'stretch']);
 const INTERACTION_STATES = new Set([...ONE_SHOT_STATES, 'excited']);
 
+const ACTIVITY_MODE_PROFILES = {
+  quiet: {
+    speedMultiplier: 0.72,
+    stopDelayMs: [7600, 14000],
+    stopDurationMultiplier: 1.35,
+    actionMultiplier: 0.62,
+    speechChance: 0.38
+  },
+  normal: {
+    speedMultiplier: 1,
+    stopDelayMs: [2600, 5600],
+    stopDurationMultiplier: 1,
+    actionMultiplier: 1,
+    speechChance: 1
+  },
+  lively: {
+    speedMultiplier: 1.18,
+    stopDelayMs: [1800, 4300],
+    stopDurationMultiplier: 0.82,
+    actionMultiplier: 1.35,
+    speechChance: 1
+  }
+};
+
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
 }
@@ -54,17 +78,27 @@ class MovementController {
     this.nextStopAt = Date.now() + randomBetween(4500, 9000);
     this.stateUntil = 0;
     this.lastPersistAt = 0;
+    this.lastStaticApplyAt = 0;
     this.stateVersion = 0;
     this.currentReason = null;
     this.lastStopState = null;
     this.drag = null;
     this.jumpArc = null;
+    this.motion = 'breathe';
+    this.startedAt = Date.now();
     this.behavior = {
       energy: 0.85,
       attention: 0.2,
+      boredom: 0,
+      curiosity: 0.25,
       lastInteractionAt: 0,
       recentInteractions: []
     };
+  }
+
+  getActivityProfile() {
+    const mode = this.getSettings().activityMode;
+    return ACTIVITY_MODE_PROFILES[mode] ?? ACTIVITY_MODE_PROFILES.normal;
   }
 
   getPetSize() {
@@ -138,7 +172,17 @@ class MovementController {
 
     const elapsed = now - this.jumpArc.startedAt;
     const progress = clamp(elapsed / this.jumpArc.durationMs, 0, 1);
-    return -Math.sin(progress * Math.PI) * this.jumpArc.height;
+    const baseArc = -Math.sin(progress * Math.PI) * this.jumpArc.height;
+
+    if (this.jumpArc.motion === 'hop') {
+      return baseArc * 0.72;
+    }
+
+    if (this.jumpArc.motion === 'bounce') {
+      return baseArc + Math.sin(progress * Math.PI * 3) * 5 * (1 - progress);
+    }
+
+    return baseArc;
   }
 
   startJumpArc(options = {}) {
@@ -146,7 +190,8 @@ class MovementController {
     this.jumpArc = {
       startedAt: Date.now(),
       durationMs: options.durationMs ?? 620,
-      height: options.height ?? Math.round(46 * scale)
+      height: options.height ?? Math.round(46 * scale),
+      motion: options.motion ?? 'jump'
     };
   }
 
@@ -173,7 +218,7 @@ class MovementController {
       startX: position.x,
       startY: position.y
     };
-    this.enterState('idle', { reason: '날 어디로 보낼거냐?' });
+    this.enterState('idle', { reason: '날 어디로 보낼거냐?', motion: 'picked-up' });
   }
 
   dragTo(point) {
@@ -197,12 +242,22 @@ class MovementController {
     }
 
     if (Math.random() < 0.18) {
-      this.enterState('waving', { reason: '좋아, 여긴 내 무대다.' });
+      this.enterState('waving', { reason: '좋아, 여긴 내 무대다.', motion: 'settle' });
       return;
     }
 
     if (Math.random() < 0.08) {
-      this.enterState('oops', { reason: '잠깐, 지구가 흔들렸어.' });
+      this.enterState('oops', { reason: '잠깐, 지구가 흔들렸어.', motion: 'wobble' });
+      return;
+    }
+
+    if (Math.random() < 0.16) {
+      this.enterState('jumping', {
+        jumpDurationMs: 520,
+        jumpHeight: Math.round(24 * this.getSettings().scale),
+        reason: '착지까지 완벽하지?',
+        motion: 'hop'
+      });
       return;
     }
 
@@ -234,9 +289,14 @@ class MovementController {
       direction: this.direction,
       mood: this.getMood(),
       reason: this.currentReason,
+      motion: this.motion,
+      activityMode: this.getSettings().activityMode,
+      speechChance: this.getActivityProfile().speechChance,
       behavior: {
         energy: Number(this.behavior.energy.toFixed(2)),
-        attention: Number(this.behavior.attention.toFixed(2))
+        attention: Number(this.behavior.attention.toFixed(2)),
+        boredom: Number(this.behavior.boredom.toFixed(2)),
+        curiosity: Number(this.behavior.curiosity.toFixed(2))
       },
       position: this.getCurrentPosition()
     };
@@ -249,15 +309,30 @@ class MovementController {
   getMood() {
     if (this.behavior.energy < 0.25) return 'tired';
     if (this.behavior.attention > 0.7) return 'playful';
-    if (Date.now() - this.behavior.lastInteractionAt > 45000) return 'curious';
+    if (this.behavior.boredom > 0.72) return 'lonely';
+    if (this.behavior.curiosity > 0.65 || Date.now() - this.getLastInteractionOrStart() > 45000) return 'curious';
     return 'calm';
+  }
+
+  getLastInteractionOrStart() {
+    return this.behavior.lastInteractionAt || this.startedAt;
   }
 
   updateBehavior(deltaMs) {
     const seconds = deltaMs / 1000;
+    const idleSeconds = (Date.now() - this.getLastInteractionOrStart()) / 1000;
+    const profile = this.getActivityProfile();
+
+    if (idleSeconds > 35) {
+      this.behavior.boredom = clamp(this.behavior.boredom + seconds * 0.012, 0, 1);
+      this.behavior.curiosity = clamp(this.behavior.curiosity + seconds * 0.01, 0, 1);
+    } else {
+      this.behavior.boredom = clamp(this.behavior.boredom - seconds * 0.04, 0, 1);
+      this.behavior.curiosity = clamp(this.behavior.curiosity - seconds * 0.025, 0, 1);
+    }
 
     if (this.state === 'walking-left' || this.state === 'walking-right') {
-      this.behavior.energy = clamp(this.behavior.energy - seconds * 0.018, 0, 1);
+      this.behavior.energy = clamp(this.behavior.energy - seconds * 0.018 * profile.speedMultiplier, 0, 1);
       this.behavior.attention = clamp(this.behavior.attention - seconds * 0.012, 0, 1);
       return;
     }
@@ -270,7 +345,7 @@ class MovementController {
 
     if (this.state === 'idle' || this.state === 'waiting') {
       this.behavior.energy = clamp(this.behavior.energy + seconds * 0.055, 0, 1);
-      this.behavior.attention = clamp(this.behavior.attention - seconds * 0.018, 0, 1);
+      this.behavior.attention = clamp(this.behavior.attention - seconds * 0.018 / profile.stopDurationMultiplier, 0, 1);
       return;
     }
 
@@ -287,6 +362,12 @@ class MovementController {
       this.lastPersistAt = now;
       this.onPositionChange(position);
     }
+  }
+
+  applyStaticPosition(now, intervalMs = 250) {
+    if (now - this.lastStaticApplyAt < intervalMs) return;
+    this.lastStaticApplyAt = now;
+    this.applyPosition();
   }
 
   resizeAndClamp() {
@@ -325,6 +406,8 @@ class MovementController {
     this.behavior.recentInteractions.push(now);
     this.behavior.lastInteractionAt = now;
     this.behavior.attention = clamp(this.behavior.attention + 0.28, 0, 1);
+    this.behavior.boredom = clamp(this.behavior.boredom - 0.24, 0, 1);
+    this.behavior.curiosity = clamp(this.behavior.curiosity + 0.08, 0, 1);
 
     const isTooBusy = this.behavior.recentInteractions.length >= 4;
     if (isTooBusy) {
@@ -359,7 +442,13 @@ class MovementController {
     const reason = state === 'jumping'
       ? '봤냐? 공중 장악.'
       : (previousInteractionAt && now - previousInteractionAt < 1200 ? '또 불렀어? 인기란...' : '안녕, 내 팬!');
-    this.enterState(state, { reason });
+    this.enterState(state, {
+      reason,
+      motion: state === 'jumping' ? (this.behavior.energy > 0.62 ? 'bounce' : 'hop') : undefined,
+      jumpHeight: state === 'jumping'
+        ? Math.round(randomBetween(34, 58) * this.getSettings().scale)
+        : undefined
+    });
   }
 
   animationComplete(state) {
@@ -384,7 +473,10 @@ class MovementController {
       this.currentReason = null;
       this.scheduleNextStop();
     } else if (LOOPING_STOP_STATES.has(state)) {
-      this.stateUntil = Date.now() + (options.durationMs ?? randomBetween(1600, 4200));
+      const durationMs = options.durationMs ?? randomBetween(1600, 4200);
+      this.stateUntil = Number.isFinite(durationMs)
+        ? Date.now() + durationMs * this.getActivityProfile().stopDurationMultiplier
+        : Date.now() + durationMs;
       this.lastStopState = state;
     } else if (ONE_SHOT_STATES.has(state)) {
       this.lastStopState = state;
@@ -395,22 +487,43 @@ class MovementController {
     if (state === 'jumping') {
       this.startJumpArc({
         durationMs: options.jumpDurationMs ?? 640,
-        height: options.jumpHeight
+        height: options.jumpHeight,
+        motion: options.motion
       });
     } else if (state === 'stretch') {
       this.startJumpArc({
         durationMs: options.jumpDurationMs ?? 520,
-        height: Math.round(22 * this.getSettings().scale)
+        height: Math.round(22 * this.getSettings().scale),
+        motion: 'bounce'
       });
     } else if (state !== 'stretch') {
       this.jumpArc = null;
     }
 
+    this.motion = options.motion ?? this.getMotionForState(state);
+
     this.emitState();
   }
 
+  getMotionForState(state) {
+    if (state === 'jumping') return 'jump';
+    if (state === 'stretch') return 'stretch';
+    if (state === 'oops') return 'wobble';
+    if (state === 'waving') return 'wave';
+    if (state === 'waiting') return 'sleepy';
+    if (state === 'excited') return 'zoom';
+    if (state === 'idle') return 'breathe';
+    return 'walk';
+  }
+
   scheduleNextStop() {
-    this.nextStopAt = Date.now() + randomBetween(2600, 5600);
+    const [minMs, maxMs] = this.getActivityProfile().stopDelayMs;
+    this.nextStopAt = Date.now() + randomBetween(minMs, maxMs);
+  }
+
+  refreshBehaviorSchedule() {
+    this.scheduleNextStop();
+    this.emitState();
   }
 
   resumeWalking(preferredState) {
@@ -421,27 +534,34 @@ class MovementController {
   maybeStop(now) {
     if (now < this.nextStopAt) return;
     const choice = this.chooseStopState(now);
-    this.enterState(choice.state, { reason: choice.reason });
+    this.enterState(choice.state, {
+      durationMs: choice.durationMs,
+      jumpHeight: choice.jumpHeight,
+      motion: choice.motion,
+      reason: choice.reason
+    });
   }
 
   chooseStopState(now) {
-    const idleWeight = 2 + (this.behavior.attention < 0.25 ? 1.1 : 0);
+    const profile = this.getActivityProfile();
+    const idleForMs = now - this.getLastInteractionOrStart();
+    const idleWeight = 2 + (this.behavior.attention < 0.25 ? 1.1 : 0) + this.behavior.boredom * 1.5;
     const waitingWeight = 1.2 + (1 - this.behavior.energy) * 5;
-    const wavingWeight = 1 + this.behavior.attention * 4;
-    const reviewWeight = 1.2 + (now - this.behavior.lastInteractionAt > 30000 ? 2 : 0);
+    const wavingWeight = (1 + this.behavior.attention * 4 + this.behavior.boredom * 2) * profile.actionMultiplier;
+    const reviewWeight = (1.2 + (idleForMs > 30000 ? 2 : 0) + this.behavior.curiosity * 1.7) * profile.actionMultiplier;
     const excitedWeight = this.behavior.attention > 0.55 && this.behavior.energy > 0.35
-      ? 0.8 + this.behavior.attention * 2.5
+      ? (0.8 + this.behavior.attention * 2.5) * profile.actionMultiplier
       : 0.2;
     const stretchWeight = this.behavior.energy > 0.45
-      ? 0.45 + clamp((now - this.behavior.lastInteractionAt) / 90000, 0, 1)
+      ? 0.45 + clamp(idleForMs / 90000, 0, 1)
       : 0.1;
     const oopsWeight = this.behavior.energy < 0.18 ? 1.2 : 0.15;
-    const jumpWeight = this.behavior.energy > 0.5 ? 2.25 : 0.35;
+    const jumpWeight = this.behavior.energy > 0.5 ? 2.25 * profile.actionMultiplier : 0.35;
     const choices = [
       {
         state: 'idle',
         weight: idleWeight,
-        reason: this.behavior.attention < 0.2 ? '조용해도 존재감은 세지.' : null
+        reason: this.behavior.boredom > 0.65 ? '나 여기 있는데, 혹시 까먹었어?' : (this.behavior.attention < 0.2 ? '조용해도 존재감은 세지.' : null)
       },
       {
         state: 'waiting',
@@ -451,17 +571,19 @@ class MovementController {
       {
         state: 'waving',
         weight: wavingWeight,
-        reason: this.behavior.attention > 0.65 ? '나 여기 있다, 시선 고정!' : null
+        reason: this.behavior.boredom > 0.58 ? '인간, 톰 체크 타임이다.' : (this.behavior.attention > 0.65 ? '나 여기 있다, 시선 고정!' : null)
       },
       {
         state: 'jumping',
         weight: jumpWeight,
-        reason: this.behavior.energy > 0.72 ? '폴짝! 방금 봤지?' : null
+        reason: this.behavior.energy > 0.72 ? '폴짝! 방금 봤지?' : null,
+        motion: this.behavior.energy > 0.72 ? 'bounce' : 'hop',
+        jumpHeight: Math.round(randomBetween(28, 52) * this.getSettings().scale)
       },
       {
         state: 'review',
         weight: reviewWeight,
-        reason: now - this.behavior.lastInteractionAt > 30000 ? '인간, 뭐 꾸미는 중?' : null
+        reason: idleForMs > 30000 ? '인간, 뭐 꾸미는 중?' : null
       },
       {
         state: 'excited',
@@ -484,7 +606,13 @@ class MovementController {
         : choice
     ));
 
-    return weightedChoice(choices);
+    const choice = weightedChoice(choices);
+    return {
+      ...choice,
+      durationMs: choice.durationMs
+        ? choice.durationMs * profile.stopDurationMultiplier
+        : undefined
+    };
   }
 
   tick() {
@@ -502,31 +630,45 @@ class MovementController {
     }
 
     if (settings.paused) {
-      this.applyPosition();
+      this.applyStaticPosition(now, 500);
       return;
     }
 
     if (LOOPING_STOP_STATES.has(this.state)) {
       if (now >= this.stateUntil) this.resumeWalking();
-      this.applyPosition();
+      this.applyStaticPosition(now);
       return;
     }
 
     if (ONE_SHOT_STATES.has(this.state)) {
-      this.applyPosition();
+      if (this.jumpArc) {
+        this.applyPosition();
+      } else {
+        this.applyStaticPosition(now);
+      }
       return;
     }
 
-    const distance = settings.walkSpeed * (delta / (1000 / 60));
+    const distance = settings.walkSpeed * this.getActivityProfile().speedMultiplier * (delta / (1000 / 60));
     this.x += this.direction * distance;
 
     const { minX, maxX } = this.getLimits();
     if (this.x <= minX) {
       this.x = minX;
-      this.enterState('walking-right');
+      this.direction = 1;
+      if (Math.random() < 0.24) {
+        this.enterState('idle', { durationMs: 650, motion: 'turn' });
+      } else {
+        this.enterState('walking-right');
+      }
     } else if (this.x >= maxX) {
       this.x = maxX;
-      this.enterState('walking-left');
+      this.direction = -1;
+      if (Math.random() < 0.24) {
+        this.enterState('idle', { durationMs: 650, motion: 'turn' });
+      } else {
+        this.enterState('walking-left');
+      }
     } else {
       this.maybeStop(now);
     }

@@ -9,7 +9,8 @@ const DEFAULT_SETTINGS = {
   paused: false,
   lastPosition: null,
   sizePreset: 'medium',
-  displayPreference: 'rightmost'
+  displayPreference: 'rightmost',
+  activityMode: 'normal'
 };
 
 const SIZE_PRESETS = {
@@ -21,6 +22,12 @@ const SIZE_PRESETS = {
 const DISPLAY_PREFERENCES = {
   primary: 'Primary Display',
   rightmost: 'Right Monitor'
+};
+
+const ACTIVITY_MODES = {
+  quiet: 'Quiet',
+  normal: 'Normal',
+  lively: 'Lively'
 };
 
 function isFiniteNumber(value) {
@@ -47,6 +54,9 @@ function sanitizeSettings(value) {
   const displayPreference = Object.prototype.hasOwnProperty.call(DISPLAY_PREFERENCES, input.displayPreference)
     ? input.displayPreference
     : DEFAULT_SETTINGS.displayPreference;
+  const activityMode = Object.prototype.hasOwnProperty.call(ACTIVITY_MODES, input.activityMode)
+    ? input.activityMode
+    : DEFAULT_SETTINGS.activityMode;
 
   return {
     scale,
@@ -62,7 +72,8 @@ function sanitizeSettings(value) {
     paused: typeof input.paused === 'boolean' ? input.paused : DEFAULT_SETTINGS.paused,
     lastPosition: sanitizePosition(input.lastPosition),
     sizePreset,
-    displayPreference
+    displayPreference,
+    activityMode
   };
 }
 
@@ -107,6 +118,7 @@ function createSettingsStore(app) {
 }
 
 module.exports = {
+  ACTIVITY_MODES,
   DEFAULT_SETTINGS,
   DISPLAY_PREFERENCES,
   SIZE_PRESETS,

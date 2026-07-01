@@ -15,10 +15,61 @@ body {
   background-image: url('../assets/spritesheet.webp');
   background-repeat: no-repeat;
   background-size: 1229px 1498px;
-  will-change: background-position;
+  transform-origin: 50% 92%;
+  will-change: background-position, transform, filter;
   pointer-events: auto;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.pet-motion-breathe,
+.pet-mood-calm {
+  animation: pet-breathe 2.8s ease-in-out infinite;
+}
+
+.pet-motion-sleepy,
+.pet-mood-tired {
+  animation: pet-sleepy 3.4s ease-in-out infinite;
+}
+
+.pet-motion-hop,
+.pet-motion-settle {
+  animation: pet-soft-hop 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pet-motion-wave {
+  animation: pet-wave 540ms ease-in-out;
+}
+
+.pet-motion-jump,
+.pet-motion-bounce {
+  animation: pet-bouncy-jump 640ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pet-motion-stretch {
+  animation: pet-stretch 620ms ease-in-out;
+}
+
+.pet-motion-wobble {
+  animation: pet-wobble 720ms ease-in-out;
+}
+
+.pet-motion-turn {
+  animation: pet-turn 650ms ease-in-out;
+}
+
+.pet-motion-picked-up {
+  animation: pet-picked-up 700ms ease-in-out infinite;
+  filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.18));
+}
+
+.pet-motion-zoom,
+.pet-mood-playful {
+  filter: saturate(1.08);
+}
+
+.pet-activity-quiet {
+  opacity: 0.94;
 }
 
 #speech-bubble {
@@ -37,8 +88,144 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  animation: bubble-pop 180ms ease-out;
 }
 
 #speech-bubble[hidden] {
   display: none;
+}
+
+@keyframes pet-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(1px) scale(1.015, 0.99);
+  }
+}
+
+@keyframes pet-sleepy {
+  0%,
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+
+  50% {
+    transform: translateY(3px) scale(1.02, 0.96);
+  }
+}
+
+@keyframes pet-soft-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  38% {
+    transform: translateY(-5px) scale(0.98, 1.04);
+  }
+
+  72% {
+    transform: translateY(1px) scale(1.04, 0.96);
+  }
+}
+
+@keyframes pet-bouncy-jump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  24% {
+    transform: translateY(-6px) scale(0.96, 1.06);
+  }
+
+  72% {
+    transform: translateY(2px) scale(1.06, 0.94);
+  }
+}
+
+@keyframes pet-wave {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+
+  35% {
+    transform: rotate(-2deg) translateY(-1px);
+  }
+
+  70% {
+    transform: rotate(2deg) translateY(1px);
+  }
+}
+
+@keyframes pet-stretch {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  32% {
+    transform: translateY(2px) scale(1.08, 0.92);
+  }
+
+  68% {
+    transform: translateY(-3px) scale(0.94, 1.08);
+  }
+}
+
+@keyframes pet-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+
+  25% {
+    transform: rotate(-4deg) scale(1.02, 0.98);
+  }
+
+  55% {
+    transform: rotate(4deg) scale(0.98, 1.02);
+  }
+
+  78% {
+    transform: rotate(-2deg);
+  }
+}
+
+@keyframes pet-turn {
+  0%,
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+
+  45% {
+    transform: translateX(2px) scaleX(0.92);
+  }
+}
+
+@keyframes pet-picked-up {
+  0%,
+  100% {
+    transform: translateY(-1px) rotate(-1deg);
+  }
+
+  50% {
+    transform: translateY(1px) rotate(1deg);
+  }
+}
+
+@keyframes bubble-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }

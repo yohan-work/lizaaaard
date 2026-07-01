@@ -55,6 +55,29 @@ function displayItems(actions, state) {
   ];
 }
 
+function activityItems(actions, state) {
+  return [
+    {
+      label: 'Activity: Quiet',
+      type: 'radio',
+      checked: state.activityMode === 'quiet',
+      click: () => actions.setActivityMode('quiet')
+    },
+    {
+      label: 'Activity: Normal',
+      type: 'radio',
+      checked: state.activityMode === 'normal',
+      click: () => actions.setActivityMode('normal')
+    },
+    {
+      label: 'Activity: Lively',
+      type: 'radio',
+      checked: state.activityMode === 'lively',
+      click: () => actions.setActivityMode('lively')
+    }
+  ];
+}
+
 function buildPetContextMenu(actions, state) {
   return Menu.buildFromTemplate([
     {
@@ -65,6 +88,8 @@ function buildPetContextMenu(actions, state) {
     ...sizeItems(actions, state),
     { type: 'separator' },
     ...displayItems(actions, state),
+    { type: 'separator' },
+    ...activityItems(actions, state),
     { type: 'separator' },
     {
       label: state.clickThrough ? 'Disable Click-through' : 'Enable Click-through',
@@ -98,6 +123,8 @@ function buildTrayMenu(actions, state) {
     },
     { type: 'separator' },
     ...displayItems(actions, state),
+    { type: 'separator' },
+    ...activityItems(actions, state),
     { type: 'separator' },
     {
       label: 'Reset Position',

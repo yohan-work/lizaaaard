@@ -109,6 +109,7 @@ async function boot() {
 
   window.petAPI.onSettingsChange((settings) => {
     animator.updateSettings(settings);
+    stateMachine.updateSettings(settings);
   });
 
   window.petAPI.onStateChange((state) => {
@@ -116,6 +117,7 @@ async function boot() {
   });
 
   bindInteractions();
+  stateMachine.updateSettings(initialState.settings);
   stateMachine.apply(initialState.state);
   animator.start();
 }
